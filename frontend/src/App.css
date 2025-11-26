@@ -1,0 +1,285 @@
+.panel {
+  background: #020617;
+  border-radius: 12px;
+  border: 1px solid #374151;
+  padding: 14px 16px;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.5);
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.panel-header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.panel-tag {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(34, 197, 94, 0.5);
+  color: #bbf7d0;
+  background: rgba(22, 163, 74, 0.12);
+}
+
+.upload-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.upload-zone {
+  border: 2px dashed #4b5563;
+  border-radius: 12px;
+  padding: 28px 18px;
+  text-align: center;
+  cursor: pointer;
+  background: rgba(15, 23, 42, 0.7);
+  transition: border 0.15s ease, background 0.15s ease, transform 0.1s ease;
+}
+
+.upload-zone:hover {
+  border-color: #e5e7eb;
+  background: rgba(31, 41, 55, 0.8);
+  transform: translateY(-1px);
+}
+
+.upload-zone-text {
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+
+.upload-zone-sub {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.dataset-summary-row {
+  margin-top: 10px;
+  font-size: 13px;
+  color: #e5e7eb;
+}
+
+.rules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.rule-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #4b5563;
+  background: rgba(15, 23, 42, 0.85);
+}
+
+.rule-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.rule-col {
+  color: #a5b4fc;
+}
+
+.rule-reason {
+  font-size: 12px;
+  color: #9ca3af;
+  margin-top: 2px;
+}
+
+.rule-apply-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color: #f9fafb;
+  cursor: pointer;
+}
+
+.rule-apply-btn:hover {
+  filter: brightness(1.05);
+}
+
+/* Global button style inside the app */
+.app button {
+  border: none;
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color: #f9fafb;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(22, 163, 74, 0.4);
+  transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.1s ease;
+}
+
+.app button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 26px rgba(22, 163, 74, 0.5);
+  filter: brightness(1.03);
+}
+
+.app button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  box-shadow: none;
+  background: #4b5563;
+}
+ .app {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+  color: #e5e7eb;
+  background: radial-gradient(circle at top left, #020617, #020617 45%, #020617 100%);
+}
+
+.app h1 {
+  font-size: 26px;
+  letter-spacing: 0.03em;
+}
+
+.app > p {
+  font-size: 13px;
+  color: #9ca3af;
+}
+
+/* Data Cleaning Actions section */
+.app > section:last-of-type {
+  background: #020617;
+  border-radius: 12px;
+  border: 1px solid #1f2937;
+  padding: 14px 16px 16px;
+}
+
+/* Optional: style the "Data Cleaning Actions" heading in DataActions */
+.app h2, .app h3 {
+  margin-top: 0;
+}
+.app table {
+  border-radius: 8px;
+  overflow: hidden;
+  background: #020617;
+}
+
+.app table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.app table tbody tr:nth-child(odd) {
+  background: #020617;
+}
+
+.app table tbody tr:nth-child(even) {
+  background: #020617ee;
+}
+
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #1f2937;
+  padding-bottom: 8px;
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logo-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #22c55e, #a855f7);
+}
+
+.topbar-title {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.user-chip {
+  font-size: 13px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid #4b5563;
+}
+
+/* Login modal */
+.login-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+}
+
+.login-card {
+  background: #020617;
+  border-radius: 14px;
+  border: 1px solid #4b5563;
+  padding: 18px 20px 16px;
+  width: 320px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.login-form label {
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.login-form input {
+  border-radius: 8px;
+  border: 1px solid #4b5563;
+  background: #020617;
+  color: #e5e7eb;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.login-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
