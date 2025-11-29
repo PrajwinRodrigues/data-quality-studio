@@ -21,12 +21,7 @@ from sqlalchemy.orm import declarative_base, sessionmaker, Session
 from fastapi.security import OAuth2PasswordBearer
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
 
-
-
-
 app = FastAPI()
-
-
 
 # ===================== AUTH / USERS SETUP =====================
 
@@ -38,6 +33,7 @@ engine = create_engine(
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
+
 class User(Base):
     __tablename__ = "users"
 
@@ -46,10 +42,10 @@ class User(Base):
     name = Column(String, nullable=False)
     hashed_password = Column(String, nullable=False)
 
+
 Base.metadata.create_all(bind=engine)
 
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
-
 
 SECRET_KEY = "change-me-in-production-very-secret"
 ALGORITHM = "HS256"
@@ -71,13 +67,10 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 
-
 def get_password_hash(password: str) -> str:
     # bcrypt max 72 bytes
     password = password[:72]
     return pwd_context.hash(password)
-
-
 
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
@@ -141,7 +134,6 @@ async def get_current_user(
     return user
 
 
-
 # allow Vite dev server to call backend
 app.add_middleware(
     CORSMiddleware,
@@ -150,7 +142,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 
 @app.post("/auth/register", response_model=Token)
@@ -170,11 +161,10 @@ async def register_user(payload: UserCreate, db: Session = Depends(get_db)):
 
     token = create_access_token({"sub": str(user.id)})
     return Token(
-    access_token=token,
-    token_type="bearer",
-    user=UserOut.model_validate(user),
+        access_token=token,
+        token_type="bearer",
+        user=UserOut.model_validate(user),
     )
-
 
 
 @app.post("/auth/login", response_model=Token)
@@ -196,7 +186,6 @@ async def read_me(current_user: User = Depends(get_current_user)):
     return current_user
 
 
-
 def save_upload_to_tempfile(upload: UploadFile) -> str:
     fd, path = tempfile.mkstemp(suffix=os.path.splitext(upload.filename)[1] or ".csv")
     os.close(fd)
@@ -204,9 +193,11 @@ def save_upload_to_tempfile(upload: UploadFile) -> str:
         f.write(upload.file.read())
     return path
 
+
 def df_to_preview_rows(df: pd.DataFrame, n: int = 10):
     preview = df.head(n).fillna(value=np.nan).to_dict(orient="records")
     return preview
+
 
 @app.post("/login")
 async def login(req: LoginRequest):
@@ -220,6 +211,7 @@ async def login(req: LoginRequest):
         "token_type": "bearer",
         "username": req.username,
     }
+
 
 def df_to_summary(df: pd.DataFrame):
     summary = {}
@@ -236,6 +228,7 @@ def df_to_summary(df: pd.DataFrame):
             "top_values": top_vals,
         }
     return summary
+
 
 def sanitize_for_json(obj):
     try:
@@ -290,6 +283,29 @@ def sanitize_for_json(obj):
         return sanitize_for_json(enc)
     except Exception:
         return str(obj)
+
+
+# ===== NEW: helper for categorical missing values =====
+def fill_categorical(series: pd.Series) -> pd.Series:
+    """
+    Fill missing values in a categorical / object-like series using the most
+    frequent (mode) value. If no non-missing values exist, fall back to "".
+    """
+    non_na = series.dropna()
+    if len(non_na) == 0:
+        # column is all NaN -> fill with empty string
+        return series.fillna("")
+
+    try:
+        mode = non_na.mode()
+        if len(mode) > 0:
+            fill_value = mode.iloc[0]
+        else:
+            fill_value = ""
+    except Exception:
+        fill_value = ""
+
+    return series.fillna(fill_value)
 
 
 @app.post("/upload-csv")
@@ -411,20 +427,36 @@ async def preview_rule(file: Optional[UploadFile] = File(None), rule: str = Form
                     strategy = rule_json.get("strategy", "auto")
                 except Exception:
                     pass
+
             if col:
                 if pd.api.types.is_numeric_dtype(df_after[col]):
                     if strategy == "zero":
                         df_after[col] = df_after[col].fillna(0)
                     else:
-                        df_after[col] = df_after[col].fillna(df_after[col].median() if df_after[col].notna().any() else 0)
+                        df_after[col] = df_after[col].fillna(
+                            df_after[col].median() if df_after[col].notna().any() else 0
+                        )
                 else:
-                    df_after[col] = df_after[col].fillna("")
+                    # CATEGORICAL / OBJECT COLUMN
+                    if strategy == "zero":
+                        df_after[col] = df_after[col].fillna("")
+                    else:
+                        df_after[col] = fill_categorical(df_after[col])
             else:
+                # apply to all columns
                 for c in df_after.columns:
                     if pd.api.types.is_numeric_dtype(df_after[c]):
-                        df_after[c] = df_after[c].fillna(0)
+                        if strategy == "zero":
+                            df_after[c] = df_after[c].fillna(0)
+                        else:
+                            df_after[c] = df_after[c].fillna(
+                                df_after[c].median() if df_after[c].notna().any() else 0
+                            )
                     else:
-                        df_after[c] = df_after[c].fillna("")
+                        if strategy == "zero":
+                            df_after[c] = df_after[c].fillna("")
+                        else:
+                            df_after[c] = fill_categorical(df_after[c])
         elif op == "dedupe_by_cols":
             if cols:
                 df_after = df_after.drop_duplicates(subset=cols)
@@ -448,6 +480,7 @@ async def replace_nans(file: UploadFile = File(...), strategy: str = Form("auto"
         saved_path = save_upload_to_tempfile(file)
         df = pd.read_csv(saved_path)
         df_out = df.copy()
+
         if strategy == "zero":
             for c in df_out.columns:
                 if pd.api.types.is_numeric_dtype(df_out[c]):
@@ -457,9 +490,13 @@ async def replace_nans(file: UploadFile = File(...), strategy: str = Form("auto"
         else:  # auto
             for c in df_out.columns:
                 if pd.api.types.is_numeric_dtype(df_out[c]):
-                    df_out[c] = df_out[c].fillna(df_out[c].median() if df_out[c].notna().any() else 0)
+                    df_out[c] = df_out[c].fillna(
+                        df_out[c].median() if df_out[c].notna().any() else 0
+                    )
                 else:
-                    df_out[c] = df_out[c].fillna("")
+                    # CATEGORICAL / OBJECT COLUMN -> use most frequent value
+                    df_out[c] = fill_categorical(df_out[c])
+
         result = {"preview": df_to_preview_rows(df_out, n=10)}
         return JSONResponse(content=jsonable_encoder(sanitize_for_json(result)))
     except Exception as e:
