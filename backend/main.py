@@ -1,5 +1,5 @@
 # backend/main.py
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,16 +10,14 @@ import traceback
 import os
 import tempfile
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 import secrets
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from pydantic import BaseModel, EmailStr
 from sqlalchemy import Column, Integer, String, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 from fastapi.security import OAuth2PasswordBearer
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
 
 app = FastAPI()
 
@@ -134,10 +132,10 @@ async def get_current_user(
     return user
 
 
-# allow Vite dev server to call backend
+# allow Vite dev server / any origin to call backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=".*",   # allow ALL origins (useful for demo / debugging)
+    allow_origin_regex=".*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -201,7 +199,8 @@ def df_to_preview_rows(df: pd.DataFrame, n: int = 10):
 
 @app.post("/login")
 async def login(req: LoginRequest):
-    user = fake_users_db.get(req.username)
+    # NOTE: legacy demo route; fake_users_db must exist if you ever use this
+    user = fake_users_db.get(req.username)  # type: ignore[name-defined]
     if not user or user["password"] != req.password:
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
@@ -285,7 +284,7 @@ def sanitize_for_json(obj):
         return str(obj)
 
 
-# ===== NEW: helper for categorical missing values =====
+# ===== Helper for categorical missing values =====
 def fill_categorical(series: pd.Series) -> pd.Series:
     """
     Fill missing values in a categorical / object-like series using the most
@@ -358,14 +357,34 @@ async def suggest_rules(file: UploadFile = File(...)):
             n = len(ser)
             missing = int(ser.isna().sum())
             col_sugs = []
+
             coerced = pd.to_numeric(ser, errors="coerce")
             parsed_ok = coerced.notna().sum()
+
+            # numeric-like column
             if parsed_ok >= max(1, n // 2):
-                col_sugs.append({"op": "parse_numeric", "reason": f"{parsed_ok}/{n} values parse as numbers"})
+                col_sugs.append({
+                    "op": "parse_numeric",
+                    "reason": f"{parsed_ok}/{n} values parse as numbers"
+                })
+                # NEW: scaling suggestion
+                col_sugs.append({
+                    "op": "scale_numeric",
+                    "reason": "Numeric-like column — consider scaling for ML / modeling"
+                })
+
             if missing > 0:
-                col_sugs.append({"op": "fill_missing", "reason": f"{missing}/{n} missing values"})
+                col_sugs.append({
+                    "op": "fill_missing",
+                    "reason": f"{missing}/{n} missing values"
+                })
+
             if ser.nunique(dropna=True) <= max(1, n // 4):
-                col_sugs.append({"op": "dedupe_by_cols", "reason": f"{ser.nunique(dropna=True)}/{n} unique (duplicates) "})
+                col_sugs.append({
+                    "op": "dedupe_by_cols",
+                    "reason": f"{ser.nunique(dropna=True)}/{n} unique (duplicates) "
+                })
+
             if col_sugs:
                 suggestions[col] = col_sugs
 
@@ -395,6 +414,7 @@ async def preview_rule(file: Optional[UploadFile] = File(None), rule: str = Form
             col = rule_obj.get("col")
             cols = rule_obj.get("cols")
         except Exception:
+            rule_obj = None
             op = rule
             col = None
             cols = None
@@ -410,23 +430,29 @@ async def preview_rule(file: Optional[UploadFile] = File(None), rule: str = Form
                         df_after[c] = pd.to_numeric(df_after[c], errors="coerce")
                     except Exception:
                         pass
+
         elif op == "strip_spaces":
             if col:
                 df_after[col] = df_after[col].astype(str).str.strip().replace("nan", None)
+
         elif op == "lowercase":
             if col:
                 df_after[col] = df_after[col].astype(str).str.lower().replace("nan", None)
+
         elif op == "parse_date":
             if col:
                 df_after[col] = pd.to_datetime(df_after[col], errors="coerce")
+
         elif op == "fill_missing":
             strategy = "auto"
-            if isinstance(rule, str) and "strategy" in rule:
-                try:
+            # rule might be JSON string with strategy
+            try:
+                if isinstance(rule, str):
                     rule_json = json.loads(rule)
-                    strategy = rule_json.get("strategy", "auto")
-                except Exception:
-                    pass
+                    if isinstance(rule_json, dict) and "strategy" in rule_json:
+                        strategy = rule_json.get("strategy", "auto")
+            except Exception:
+                pass
 
             if col:
                 if pd.api.types.is_numeric_dtype(df_after[col]):
@@ -457,6 +483,42 @@ async def preview_rule(file: Optional[UploadFile] = File(None), rule: str = Form
                             df_after[c] = df_after[c].fillna("")
                         else:
                             df_after[c] = fill_categorical(df_after[c])
+
+        elif op == "scale_numeric":
+            # default strategy: standardization
+            strategy = "standard"
+            try:
+                if isinstance(rule, str):
+                    parsed = json.loads(rule)
+                    if isinstance(parsed, dict) and "strategy" in parsed:
+                        strategy = parsed.get("strategy", "standard")
+            except Exception:
+                pass
+
+            def scale_series(s: pd.Series) -> pd.Series:
+                s_num = pd.to_numeric(s, errors="coerce")
+                if strategy == "minmax":
+                    mn = s_num.min()
+                    mx = s_num.max()
+                    if pd.isna(mn) or pd.isna(mx) or mx == mn:
+                        return s_num
+                    return (s_num - mn) / (mx - mn)
+                else:  # "standard"
+                    mean = s_num.mean()
+                    std = s_num.std(ddof=0)
+                    if pd.isna(std) or std == 0:
+                        return s_num
+                    return (s_num - mean) / std
+
+            if col:
+                df_after[col] = scale_series(df_after[col])
+            else:
+                for c in df_after.columns:
+                    try:
+                        df_after[c] = scale_series(df_after[c])
+                    except Exception:
+                        pass
+
         elif op == "dedupe_by_cols":
             if cols:
                 df_after = df_after.drop_duplicates(subset=cols)

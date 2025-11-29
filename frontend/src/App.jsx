@@ -37,16 +37,16 @@ export default function App() {
   // sidebar section
   const [section, setSection] = useState("upload");
 
-// auth state
-const [showLogin, setShowLogin] = useState(false);
-const [authLoading, setAuthLoading] = useState(false);
-const [loginEmail, setLoginEmail] = useState("");
-const [loginPassword, setLoginPassword] = useState("");
-const [loginName, setLoginName] = useState("");
-const [isRegisterMode, setIsRegisterMode] = useState(false);
-const [token, setToken] = useState(localStorage.getItem("dq_token") || null);
-const [currentUser, setCurrentUser] = useState(
-  localStorage.getItem("dq_user") || null
+  // auth state
+  const [showLogin, setShowLogin] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginName, setLoginName] = useState("");
+  const [isRegisterMode, setIsRegisterMode] = useState(false);
+  const [token, setToken] = useState(localStorage.getItem("dq_token") || null);
+  const [currentUser, setCurrentUser] = useState(
+    localStorage.getItem("dq_user") || null
   );
 
   // data state
@@ -63,47 +63,47 @@ const [currentUser, setCurrentUser] = useState(
 
   // AUTH HANDLERS
   const handleLoginSubmit = async (e) => {
-  e.preventDefault();
-  setAuthLoading(true);
-  try {
-    let data;
-    if (isRegisterMode) {
-      data = await register(loginEmail, loginPassword, loginName || "User");
-    } else {
-      data = await login(loginEmail, loginPassword);
+    e.preventDefault();
+    setAuthLoading(true);
+    try {
+      let data;
+      if (isRegisterMode) {
+        data = await register(loginEmail, loginPassword, loginName || "User");
+      } else {
+        data = await login(loginEmail, loginPassword);
+      }
+
+      setToken(data.access_token);
+      const displayName = data.user?.name || data.user?.email || "User";
+      setCurrentUser(displayName);
+
+      localStorage.setItem("dq_token", data.access_token);
+      localStorage.setItem("dq_user", displayName);
+
+      setShowLogin(false);
+      setLoginEmail("");
+      setLoginPassword("");
+      setLoginName("");
+      setIsRegisterMode(false);
+      alert(
+        isRegisterMode
+          ? `Account created. Logged in as ${displayName}.`
+          : `Logged in as ${displayName}`
+      );
+    } catch (err) {
+      console.error(err);
+      alert("Auth failed: " + (err?.response?.data?.detail || err.message));
+    } finally {
+      setAuthLoading(false);
     }
+  };
 
-    setToken(data.access_token);
-    const displayName = data.user?.name || data.user?.email || "User";
-    setCurrentUser(displayName);
-
-    localStorage.setItem("dq_token", data.access_token);
-    localStorage.setItem("dq_user", displayName);
-
-    setShowLogin(false);
-    setLoginEmail("");
-    setLoginPassword("");
-    setLoginName("");
-    setIsRegisterMode(false);
-    alert(
-      isRegisterMode
-        ? `Account created. Logged in as ${displayName}.`
-        : `Logged in as ${displayName}`
-    );
-  } catch (err) {
-    console.error(err);
-    alert("Auth failed: " + (err?.response?.data?.detail || err.message));
-  } finally {
-    setAuthLoading(false);
-  }
-};
-
-const handleLogout = () => {
-  setToken(null);
-  setCurrentUser(null);
-  localStorage.removeItem("dq_token");
-  localStorage.removeItem("dq_user");
-};
+  const handleLogout = () => {
+    setToken(null);
+    setCurrentUser(null);
+    localStorage.removeItem("dq_token");
+    localStorage.removeItem("dq_user");
+  };
 
   // Upload CSV
   const handleUpload = async () => {
@@ -355,6 +355,7 @@ const handleLogout = () => {
                         <option value="parse_date">Parse Date</option>
                         <option value="fill_missing">Fill Missing</option>
                         <option value="dedupe_by_cols">Dedupe Rows</option>
+                        <option value="scale_numeric">Scale Numeric (standardize)</option>
                       </select>
                     </label>
 
@@ -460,83 +461,83 @@ const handleLogout = () => {
 
         {/* Login modal */}
         {showLogin && (
-  <div className="login-backdrop">
-    <div className="login-card">
-      <h3>{isRegisterMode ? "Create Account" : "Login"}</h3>
-      <p className="small">
-        {isRegisterMode
-          ? "Sign up with your email and a password."
-          : "Login with the account you created."}
-      </p>
-      <form onSubmit={handleLoginSubmit} className="login-form">
-        {isRegisterMode && (
-          <label>
-            Name
-            <input
-              type="text"
-              value={loginName}
-              onChange={(e) => setLoginName(e.target.value)}
-              placeholder="Prajwin Rodrigues"
-              required
-            />
-          </label>
+          <div className="login-backdrop">
+            <div className="login-card">
+              <h3>{isRegisterMode ? "Create Account" : "Login"}</h3>
+              <p className="small">
+                {isRegisterMode
+                  ? "Sign up with your email and a password."
+                  : "Login with the account you created."}
+              </p>
+              <form onSubmit={handleLoginSubmit} className="login-form">
+                {isRegisterMode && (
+                  <label>
+                    Name
+                    <input
+                      type="text"
+                      value={loginName}
+                      onChange={(e) => setLoginName(e.target.value)}
+                      placeholder="Prajwin Rodrigues"
+                      required
+                    />
+                  </label>
+                )}
+                <label>
+                  Email
+                  <input
+                    type="email"
+                    value={loginEmail}
+                    onChange={(e) => setLoginEmail(e.target.value)}
+                    required
+                  />
+                </label>
+                <label>
+                  Password
+                  <input
+                    type="password"
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    required
+                  />
+                </label>
+                <div className="login-actions">
+                  <button
+                    type="button"
+                    onClick={() => setShowLogin(false)}
+                    disabled={authLoading}
+                  >
+                    Cancel
+                  </button>
+                  <button type="submit" disabled={authLoading}>
+                    {authLoading
+                      ? isRegisterMode
+                        ? "Creating..."
+                        : "Logging in..."
+                      : isRegisterMode
+                      ? "Sign up"
+                      : "Login"}
+                  </button>
+                </div>
+              </form>
+              <p className="small" style={{ marginTop: 8 }}>
+                {isRegisterMode ? "Already have an account? " : "Need an account? "}
+                <button
+                  type="button"
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#38bdf8",
+                    cursor: "pointer",
+                    padding: 0,
+                  }}
+                  onClick={() => setIsRegisterMode((v) => !v)}
+                >
+                  {isRegisterMode ? "Log in" : "Sign up"}
+                </button>
+              </p>
+            </div>
+          </div>
         )}
-        <label>
-          Email
-          <input
-            type="email"
-            value={loginEmail}
-            onChange={(e) => setLoginEmail(e.target.value)}
-            required
-          />
-        </label>
-        <label>
-          Password
-          <input
-            type="password"
-            value={loginPassword}
-            onChange={(e) => setLoginPassword(e.target.value)}
-            required
-          />
-        </label>
-        <div className="login-actions">
-          <button
-            type="button"
-            onClick={() => setShowLogin(false)}
-            disabled={authLoading}
-          >
-            Cancel
-          </button>
-          <button type="submit" disabled={authLoading}>
-            {authLoading
-              ? isRegisterMode
-                ? "Creating..."
-                : "Logging in..."
-              : isRegisterMode
-              ? "Sign up"
-              : "Login"}
-          </button>
-        </div>
-      </form>
-      <p className="small" style={{ marginTop: 8 }}>
-        {isRegisterMode ? "Already have an account? " : "Need an account? "}
-        <button
-          type="button"
-          style={{
-            background: "none",
-            border: "none",
-            color: "#38bdf8",
-            cursor: "pointer",
-            padding: 0,
-          }}
-          onClick={() => setIsRegisterMode((v) => !v)}
-        >
-          {isRegisterMode ? "Log in" : "Sign up"}
-        </button>
-      </p>
-    </div>
-  </div>
-)}
       </div>
     </div>
   );
