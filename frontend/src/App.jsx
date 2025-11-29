@@ -132,18 +132,36 @@ export default function App() {
   };
 
   // Preview rule (calls backend preview-rule)
+  // UPDATED to accept full custom payloads,
+  // so we can call handlePreviewRule({ op: "scale_numeric" }) for all numeric columns.
   const handlePreviewRule = async (ruleObj = null) => {
     if (!file) {
       alert("Upload a CSV first!");
       return;
     }
-    const op = ruleObj?.op || rule;
-    const col = ruleObj?.col || selectedColumn;
-    if (!op) {
-      alert("Select an operation first!");
-      return;
+
+    let rulePayload;
+
+    if (ruleObj) {
+      // Caller gives the full payload (used by suggestions and "Scale All Numeric" button)
+      if (!ruleObj.op) {
+        alert("Operation is missing in rule payload!");
+        return;
+      }
+      rulePayload = ruleObj;
+    } else {
+      // Normal path from Apply Rule UI (single column + selected rule)
+      if (!rule) {
+        alert("Select an operation first!");
+        return;
+      }
+      if (!selectedColumn) {
+        alert("Select a column first!");
+        return;
+      }
+      rulePayload = { op: rule, col: selectedColumn };
     }
-    const rulePayload = { op, col, ...(ruleObj?.cols ? { cols: ruleObj.cols } : {}) };
+
     setLoading(true);
     try {
       const data = await previewRule(file, rulePayload);
@@ -359,12 +377,26 @@ export default function App() {
                       </select>
                     </label>
 
+                    {/* Standard single-column preview */}
                     <button
                       onClick={() => handlePreviewRule()}
                       disabled={loading || !selectedColumn}
                       style={{ marginLeft: 12 }}
                     >
                       {loading ? "Processing..." : "Preview Rule"}
+                    </button>
+
+                    {/* NEW: scale ALL numeric columns */}
+                    <button
+                      onClick={() => {
+                        setRule("scale_numeric");
+                        setSelectedColumn("");
+                        handlePreviewRule({ op: "scale_numeric" });
+                      }}
+                      disabled={loading}
+                      style={{ marginLeft: 12 }}
+                    >
+                      {loading ? "Processing..." : "Scale All Numeric Columns"}
                     </button>
                   </div>
                 </section>
