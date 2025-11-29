@@ -421,6 +421,7 @@ async def preview_rule(file: Optional[UploadFile] = File(None), rule: str = Form
 
         df_after = df.copy()
 
+        # -------- parse_numeric --------
         if op == "parse_numeric":
             if col:
                 df_after[col] = pd.to_numeric(df_after[col], errors="coerce")
@@ -431,18 +432,22 @@ async def preview_rule(file: Optional[UploadFile] = File(None), rule: str = Form
                     except Exception:
                         pass
 
+        # -------- strip_spaces --------
         elif op == "strip_spaces":
             if col:
                 df_after[col] = df_after[col].astype(str).str.strip().replace("nan", None)
 
+        # -------- lowercase --------
         elif op == "lowercase":
             if col:
                 df_after[col] = df_after[col].astype(str).str.lower().replace("nan", None)
 
+        # -------- parse_date --------
         elif op == "parse_date":
             if col:
                 df_after[col] = pd.to_datetime(df_after[col], errors="coerce")
 
+        # -------- fill_missing --------
         elif op == "fill_missing":
             strategy = "auto"
             # rule might be JSON string with strategy
@@ -484,7 +489,8 @@ async def preview_rule(file: Optional[UploadFile] = File(None), rule: str = Form
                         else:
                             df_after[c] = fill_categorical(df_after[c])
 
-                elif op == "scale_numeric":
+        # -------- scale_numeric (NEW / FIXED) --------
+        elif op == "scale_numeric":
             # default strategy: standardization
             strategy = "standard"
             try:
@@ -511,7 +517,7 @@ async def preview_rule(file: Optional[UploadFile] = File(None), rule: str = Form
                     return (s_num - mean) / std
 
             # decide which columns to scale
-            if 'cols' in (rule_obj or {}) and rule_obj.get("cols"):
+            if rule_obj and isinstance(rule_obj, dict) and rule_obj.get("cols"):
                 target_cols = rule_obj["cols"]
             elif col:
                 target_cols = [col]
@@ -527,23 +533,27 @@ async def preview_rule(file: Optional[UploadFile] = File(None), rule: str = Form
                 if pd.api.types.is_numeric_dtype(df_after[c]):
                     df_after[c] = scale_series(df_after[c])
 
-
+        # -------- dedupe_by_cols --------
         elif op == "dedupe_by_cols":
             if cols:
                 df_after = df_after.drop_duplicates(subset=cols)
             else:
                 df_after = df_after.drop_duplicates()
 
+        # -------- build response --------
         after_preview = df_to_preview_rows(df_after, n=10)
         result = {"before_preview": before_preview, "after_preview": after_preview}
         safe_result = sanitize_for_json(result)
         return JSONResponse(content=jsonable_encoder(safe_result))
+
     except Exception as e:
         tb = traceback.format_exc()
         print("=== PREVIEW RULE ERROR TRACEBACK ===")
         print(tb)
-        return JSONResponse(status_code=500, content=jsonable_encoder({"detail": str(e), "traceback": tb[:4000]}))
-
+        return JSONResponse(
+            status_code=500,
+            content=jsonable_encoder({"detail": str(e), "traceback": tb[:4000]})
+        )
 
 @app.post("/replace-nans")
 async def replace_nans(file: UploadFile = File(...), strategy: str = Form("auto")):
