@@ -484,7 +484,7 @@ async def preview_rule(file: Optional[UploadFile] = File(None), rule: str = Form
                         else:
                             df_after[c] = fill_categorical(df_after[c])
 
-        elif op == "scale_numeric":
+                elif op == "scale_numeric":
             # default strategy: standardization
             strategy = "standard"
             try:
@@ -510,14 +510,23 @@ async def preview_rule(file: Optional[UploadFile] = File(None), rule: str = Form
                         return s_num
                     return (s_num - mean) / std
 
-            if col:
-                df_after[col] = scale_series(df_after[col])
+            # decide which columns to scale
+            if 'cols' in (rule_obj or {}) and rule_obj.get("cols"):
+                target_cols = rule_obj["cols"]
+            elif col:
+                target_cols = [col]
             else:
-                for c in df_after.columns:
-                    try:
-                        df_after[c] = scale_series(df_after[c])
-                    except Exception:
-                        pass
+                # NO column specified -> scale ONLY numeric dtype columns
+                target_cols = [
+                    c for c in df_after.columns
+                    if pd.api.types.is_numeric_dtype(df_after[c])
+                ]
+
+            # IMPORTANT: only touch numeric columns; leave categoricals as-is
+            for c in target_cols:
+                if pd.api.types.is_numeric_dtype(df_after[c]):
+                    df_after[c] = scale_series(df_after[c])
+
 
         elif op == "dedupe_by_cols":
             if cols:
