@@ -141,6 +141,39 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ===================== DATAFRAME HELPERS =====================
+
+
+def load_df_from_path(path: str) -> pd.DataFrame:
+    if not os.path.exists(path):
+        raise HTTPException(status_code=400, detail="Saved file not found")
+    return pd.read_csv(path)
+
+
+def save_df_to_path(df: pd.DataFrame, path: str | None = None) -> str:
+    """
+    Save df to an existing path (if provided) or a new temp path.
+    Return the path.
+    """
+    if path is None:
+        fd, path = tempfile.mkstemp(suffix=".csv")
+        os.close(fd)
+    df.to_csv(path, index=False)
+    return path
+
+
+def save_upload_to_tempfile(upload: UploadFile) -> str:
+    fd, path = tempfile.mkstemp(suffix=os.path.splitext(upload.filename)[1] or ".csv")
+    os.close(fd)
+    with open(path, "wb") as f:
+        f.write(upload.file.read())
+    return path
+
+
+def df_to_preview_rows(df: pd.DataFrame, n: int = 10):
+    preview = df.head(n).fillna(value=np.nan).to_dict(orient="records")
+    return preview
+
 
 @app.post("/auth/register", response_model=Token)
 async def register_user(payload: UserCreate, db: Session = Depends(get_db)):
@@ -184,19 +217,7 @@ async def read_me(current_user: User = Depends(get_current_user)):
     return current_user
 
 
-def save_upload_to_tempfile(upload: UploadFile) -> str:
-    fd, path = tempfile.mkstemp(suffix=os.path.splitext(upload.filename)[1] or ".csv")
-    os.close(fd)
-    with open(path, "wb") as f:
-        f.write(upload.file.read())
-    return path
-
-
-def df_to_preview_rows(df: pd.DataFrame, n: int = 10):
-    preview = df.head(n).fillna(value=np.nan).to_dict(orient="records")
-    return preview
-
-
+# Legacy demo login (unused; kept for compatibility)
 @app.post("/login")
 async def login(req: LoginRequest):
     # NOTE: legacy demo route; fake_users_db must exist if you ever use this
@@ -307,6 +328,9 @@ def fill_categorical(series: pd.Series) -> pd.Series:
     return series.fillna(fill_value)
 
 
+# ===================== ENDPOINTS =====================
+
+
 @app.post("/upload-csv")
 async def upload_csv(file: UploadFile = File(...)):
     try:
@@ -385,6 +409,13 @@ async def suggest_rules(file: UploadFile = File(...)):
                     "reason": f"{ser.nunique(dropna=True)}/{n} unique (duplicates) "
                 })
 
+            # NEW: encoding suggestion for low-cardinality categoricals
+            if not pd.api.types.is_numeric_dtype(ser) and ser.nunique(dropna=True) <= min(50, n):
+                col_sugs.append({
+                    "op": "encode_categorical",
+                    "reason": f"{ser.nunique(dropna=True)} unique categories – good candidate for encoding"
+                })
+
             if col_sugs:
                 suggestions[col] = col_sugs
 
@@ -398,14 +429,23 @@ async def suggest_rules(file: UploadFile = File(...)):
 
 
 @app.post("/preview-rule")
-async def preview_rule(file: Optional[UploadFile] = File(None), rule: str = Form(...)):
+async def preview_rule(
+    file: Optional[UploadFile] = File(None),
+    rule: str = Form(...),
+    saved_path: Optional[str] = Form(None),
+):
     try:
-        if file is None:
-            raise HTTPException(status_code=400, detail="file (UploadFile) is required")
+        # Load the dataframe: either from saved_path or from an uploaded file
+        if saved_path:
+            df = load_df_from_path(saved_path)
+        elif file is not None:
+            saved_path = save_upload_to_tempfile(file)
+            df = pd.read_csv(saved_path)
+        else:
+            raise HTTPException(status_code=400, detail="Either file or saved_path is required")
 
-        saved_path = save_upload_to_tempfile(file)
-        df = pd.read_csv(saved_path)
         before_preview = df_to_preview_rows(df, n=10)
+        df_after = df.copy()
 
         import json
         try:
@@ -418,8 +458,6 @@ async def preview_rule(file: Optional[UploadFile] = File(None), rule: str = Form
             op = rule
             col = None
             cols = None
-
-        df_after = df.copy()
 
         # -------- parse_numeric --------
         if op == "parse_numeric":
@@ -489,7 +527,7 @@ async def preview_rule(file: Optional[UploadFile] = File(None), rule: str = Form
                         else:
                             df_after[c] = fill_categorical(df_after[c])
 
-        # -------- scale_numeric (NEW / FIXED) --------
+        # -------- scale_numeric --------
         elif op == "scale_numeric":
             # default strategy: standardization
             strategy = "standard"
@@ -533,6 +571,42 @@ async def preview_rule(file: Optional[UploadFile] = File(None), rule: str = Form
                 if pd.api.types.is_numeric_dtype(df_after[c]):
                     df_after[c] = scale_series(df_after[c])
 
+        # -------- encode_categorical (NEW) --------
+        elif op == "encode_categorical":
+            import json as _json
+            strategy = "onehot"
+            try:
+                parsed = _json.loads(rule)
+                if isinstance(parsed, dict) and "strategy" in parsed:
+                    strategy = parsed.get("strategy", "onehot")
+            except Exception:
+                pass
+
+            def encode_column(df_local: pd.DataFrame, c: str) -> pd.DataFrame:
+                if strategy == "label":
+                    # label encoding; unseen categories become -1, we map to NaN
+                    encoded = df_local[c].astype("category").cat.codes.replace(-1, np.nan)
+                    df_local[c] = encoded
+                    return df_local
+                else:  # onehot
+                    return pd.get_dummies(df_local, columns=[c], prefix=[c])
+
+            if rule_obj and isinstance(rule_obj, dict) and rule_obj.get("cols"):
+                target_cols = rule_obj["cols"]
+            elif col:
+                target_cols = [col]
+            else:
+                # auto-detect low-cardinality categoricals
+                target_cols = [
+                    c for c in df_after.columns
+                    if not pd.api.types.is_numeric_dtype(df_after[c])
+                    and df_after[c].nunique(dropna=True) <= 50
+                ]
+
+            for c in target_cols:
+                if c in df_after.columns:
+                    df_after = encode_column(df_after, c)
+
         # -------- dedupe_by_cols --------
         elif op == "dedupe_by_cols":
             if cols:
@@ -542,7 +616,13 @@ async def preview_rule(file: Optional[UploadFile] = File(None), rule: str = Form
 
         # -------- build response --------
         after_preview = df_to_preview_rows(df_after, n=10)
-        result = {"before_preview": before_preview, "after_preview": after_preview}
+        new_saved_path = save_df_to_path(df_after, path=saved_path)
+
+        result = {
+            "before_preview": before_preview,
+            "after_preview": after_preview,
+            "saved_path": new_saved_path,
+        }
         safe_result = sanitize_for_json(result)
         return JSONResponse(content=jsonable_encoder(safe_result))
 
@@ -555,11 +635,23 @@ async def preview_rule(file: Optional[UploadFile] = File(None), rule: str = Form
             content=jsonable_encoder({"detail": str(e), "traceback": tb[:4000]})
         )
 
+
 @app.post("/replace-nans")
-async def replace_nans(file: UploadFile = File(...), strategy: str = Form("auto")):
+async def replace_nans(
+    file: Optional[UploadFile] = File(None),
+    strategy: str = Form("auto"),
+    saved_path: Optional[str] = Form(None),
+):
     try:
-        saved_path = save_upload_to_tempfile(file)
-        df = pd.read_csv(saved_path)
+        # Load the dataframe: either from saved_path or from an uploaded file
+        if saved_path:
+            df = load_df_from_path(saved_path)
+        elif file is not None:
+            saved_path = save_upload_to_tempfile(file)
+            df = pd.read_csv(saved_path)
+        else:
+            raise HTTPException(status_code=400, detail="Either file or saved_path is required")
+
         df_out = df.copy()
 
         if strategy == "zero":
@@ -578,7 +670,12 @@ async def replace_nans(file: UploadFile = File(...), strategy: str = Form("auto"
                     # CATEGORICAL / OBJECT COLUMN -> use most frequent value
                     df_out[c] = fill_categorical(df_out[c])
 
-        result = {"preview": df_to_preview_rows(df_out, n=10)}
+        new_saved_path = save_df_to_path(df_out, path=saved_path)
+
+        result = {
+            "preview": df_to_preview_rows(df_out, n=10),
+            "saved_path": new_saved_path,
+        }
         return JSONResponse(content=jsonable_encoder(sanitize_for_json(result)))
     except Exception as e:
         tb = traceback.format_exc()
