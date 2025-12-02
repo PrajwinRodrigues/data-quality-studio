@@ -60,6 +60,7 @@ export default function App() {
   const [nRowsTotal, setNRowsTotal] = useState(null);
   const [loading, setLoading] = useState(false);
   const [suggestions, setSuggestions] = useState({});
+  const [savedPath, setSavedPath] = useState(null); // <-- NEW
 
   // AUTH HANDLERS
   const handleLoginSubmit = async (e) => {
@@ -120,6 +121,7 @@ export default function App() {
       setBefore(data.preview || []);
       setAfter([]);
       setSuggestions({});
+      setSavedPath(data.saved_path || null); // <-- NEW
       alert("File uploaded successfully!");
       // once uploaded, jump to cleaning tools
       setSection("clean");
@@ -164,9 +166,10 @@ export default function App() {
 
     setLoading(true);
     try {
-      const data = await previewRule(file, rulePayload);
+      const data = await previewRule(file, rulePayload, savedPath); // <-- NEW (pass savedPath)
       setBefore(data.before_preview || []);
       setAfter(data.after_preview || []);
+      if (data.saved_path) setSavedPath(data.saved_path); // <-- NEW (update savedPath)
       setSection("preview");
     } catch (err) {
       console.error(err);
@@ -204,8 +207,9 @@ export default function App() {
     }
     setLoading(true);
     try {
-      const data = await replaceNaNs(file, mode);
+      const data = await replaceNaNs(file, mode, savedPath); // <-- NEW (pass savedPath)
       if (data.preview) setAfter(data.preview);
+      if (data.saved_path) setSavedPath(data.saved_path); // <-- NEW (update savedPath)
       alert("Replace NaNs completed (preview available).");
       setSection("preview");
     } catch (err) {
@@ -226,6 +230,7 @@ export default function App() {
       setSummary(data.summary || {});
       setNRowsTotal(data.n_rows_total ?? null);
       setBefore(data.preview || []);
+      setSavedPath(data.saved_path || null); // <-- NEW
     } catch (err) {
       console.error(err);
     } finally {

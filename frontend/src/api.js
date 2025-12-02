@@ -1,7 +1,8 @@
 // frontend/src/api.js
 import axios from "axios";
 
-export const API_BASE ="https://dataqualitystudio.onrender.com";
+export const API_BASE = "http://127.0.0.1:8000";
+
 
 
 const client = axios.create({
@@ -29,12 +30,15 @@ export async function uploadCsv(file) {
 }
 
 // Preview rule -> /preview-rule expects form "file" and form "rule" (json string or simple op)
-export async function previewRule(file, ruleObj) {
+export async function previewRule(file, ruleObj, savedPath) {
   const fd = new FormData();
   if (file instanceof File) fd.append("file", file);
   const ruleStr =
     typeof ruleObj === "string" ? ruleObj : JSON.stringify(ruleObj || "");
   fd.append("rule", ruleStr);
+  if (savedPath) {
+    fd.append("saved_path", savedPath);
+  }
   const res = await client.post("/preview-rule", fd, {
     headers: { "Content-Type": "multipart/form-data" },
   });
@@ -52,10 +56,13 @@ export async function suggestRules(file) {
 }
 
 // Replace NaNs -> /replace-nans expects "file" and form field "strategy"
-export async function replaceNaNs(file, strategy = "auto") {
+export async function replaceNaNs(file, strategy = "auto", savedPath) {
   const fd = new FormData();
-  fd.append("file", file);
+  if (file instanceof File) fd.append("file", file);
   fd.append("strategy", strategy);
+  if (savedPath) {
+    fd.append("saved_path", savedPath);
+  }
   const res = await client.post("/replace-nans", fd, {
     headers: { "Content-Type": "multipart/form-data" },
   });
